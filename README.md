@@ -20,7 +20,6 @@ The main goal of the project is to explore a new way of interaction between the 
 The project combines concepts from **computer vision**, **hand tracking**, **Web Audio**, **generative music**, and **node-based visual animations**. This makes it possible to create a creative experience where the user's gestures can modify musical parameters such as rhythm, pitch, intensity, effects, or sound sequences.
 
 **Hand Music Controller** is designed as an open-source project for developers, musicians, interactive designers, and anyone interested in experimenting with new forms of musical creation using modern web technologies.
-```
 
 # Hand Music Controller
 
