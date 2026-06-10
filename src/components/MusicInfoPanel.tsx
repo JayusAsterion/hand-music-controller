@@ -117,6 +117,9 @@ function GestureLine({
 }) {
   const height = Math.round((hand?.motion.height ?? 0) * 100)
   const openness = Math.round((hand?.motion.openness ?? 0) * 100)
+  const x = Math.round((hand?.motion.x ?? 0) * 100)
+  const tilt = Math.round(normalizeAngle(hand?.motion.tilt ?? 0) * 100)
+  const roll = Math.round(normalizeAngle(hand?.motion.roll ?? 0) * 100)
 
   return (
     <div className="gesture-line">
@@ -126,8 +129,12 @@ function GestureLine({
         <span>{role}</span>
       </div>
       <small>
-        {height}% / {openness}%
+        H {height}% A {openness}% X {x}% T {tilt}% R {roll}%
       </small>
     </div>
   )
+}
+
+function normalizeAngle(value: number) {
+  return Math.min(1, Math.abs(value) / Math.PI)
 }

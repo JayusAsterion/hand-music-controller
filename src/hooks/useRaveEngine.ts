@@ -24,6 +24,10 @@ export function useRaveEngine(
   const hatRef = useRef<Tone.NoiseSynth | null>(null)
   const acidRef = useRef<Tone.MonoSynth | null>(null)
   const masterRef = useRef<Tone.Limiter | null>(null)
+  const filterRef = useRef<Tone.Filter | null>(null)
+  const delayRef = useRef<Tone.FeedbackDelay | null>(null)
+  const reverbRef = useRef<Tone.Reverb | null>(null)
+  const driveRef = useRef<Tone.Distortion | null>(null)
   const samplePlayersRef = useRef<Partial<Record<SampleSlot, Tone.Player>>>({})
   const samplePresetRef = useRef('')
   const loopsRef = useRef<Tone.Loop[]>([])
@@ -46,6 +50,10 @@ export function useRaveEngine(
       const drive = new Tone.Distortion(0.22).connect(delay)
       const filter = new Tone.Filter(1500, 'lowpass').connect(drive)
       masterRef.current = limiter
+      filterRef.current = filter
+      delayRef.current = delay
+      reverbRef.current = reverb
+      driveRef.current = drive
 
       bassRef.current = new Tone.MonoSynth({
         envelope: { attack: 0.01, decay: 0.18, release: 0.14, sustain: 0.22 },
@@ -119,11 +127,14 @@ export function useRaveEngine(
           const leftMotion = getHandMotion(handsRef.current, 'Left')
 
           if (activeKeysRef.current.has('Left-thumb')) {
+            const velocity = 0.7 + leftMotion.height * 0.3
+
             if (!triggerSample('kick', time)) {
               kickRef.current?.triggerAttackRelease(
                 leftMotion.height > 0.7 ? 'D1' : 'C1',
                 '16n',
                 time,
+                velocity,
               )
             }
           }
@@ -204,12 +215,12 @@ export function useRaveEngine(
   }, [setAudioReady])
 
   useEffect(() => {
-    Tone.Transport.bpm.value = preset.bpm
     syncSamples(preset, masterRef.current)
     const activeKeys = new Set(activeControls.map((control) => control.key))
     activeKeysRef.current = activeKeys
     handsRef.current = hands
     const connectedChord = getConnectedChord([...activeKeys], hands, preset)
+    applyGestureModulation(preset)
 
     const leadNotes = new Set<string>()
 
@@ -268,12 +279,42 @@ export function useRaveEngine(
       clapRef.current?.dispose()
       hatRef.current?.dispose()
       acidRef.current?.dispose()
+      filterRef.current?.dispose()
+      delayRef.current?.dispose()
+      reverbRef.current?.dispose()
+      driveRef.current?.dispose()
       Object.values(samplePlayersRef.current).forEach((player) => player.dispose())
     },
     [],
   )
 
   return { startAudio, stopAudio }
+
+  function applyGestureModulation(nextPreset: MusicPreset) {
+    const leftMotion = getHandMotion(handsRef.current, 'Left')
+    const rightMotion = getHandMotion(handsRef.current, 'Right')
+    const leftRoll = normalizeAngle(leftMotion.roll)
+    const rightRoll = normalizeAngle(rightMotion.roll)
+    const rightTilt = normalizeAngle(rightMotion.tilt)
+    const rightExpression = Math.max(rightMotion.openness, rightMotion.spread)
+
+    Tone.Transport.bpm.rampTo(nextPreset.bpm, 0.12)
+    kickRef.current?.volume.rampTo(-8 + leftMotion.height * 2, 0.08)
+    hatRef.current?.volume.rampTo(-25 + leftMotion.openness * 5, 0.08)
+    clapRef.current?.volume.rampTo(-14 + Math.max(leftRoll, leftMotion.x) * 3, 0.08)
+    acidRef.current?.volume.rampTo(-17 + leftMotion.x * 4, 0.08)
+
+    filterRef.current?.frequency.rampTo(650 + rightMotion.height * 4300, 0.12)
+    padRef.current?.volume.rampTo(-25 + rightExpression * 12, 0.12)
+    arpRef.current?.volume.rampTo(-25 + rightTilt * 13, 0.12)
+    leadRef.current?.volume.rampTo(-18 + rightRoll * 8, 0.12)
+    delayRef.current?.wet.rampTo(0.06 + rightTilt * 0.32, 0.12)
+    reverbRef.current?.wet.rampTo(0.14 + rightMotion.height * 0.24, 0.12)
+
+    if (driveRef.current) {
+      driveRef.current.distortion = 0.12 + leftMotion.openness * 0.2
+    }
+  }
 
   function syncSamples(nextPreset: MusicPreset, output: Tone.ToneAudioNode | null) {
     if (!output || samplePresetRef.current === nextPreset.id) {
@@ -318,4 +359,8 @@ function getHandMotion(hands: DetectedHand[], side: 'Left' | 'Right') {
       x: 0.5,
     }
   )
+}
+
+function normalizeAngle(value: number) {
+  return Math.min(1, Math.abs(value) / Math.PI)
 }

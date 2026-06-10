@@ -53,7 +53,7 @@ export function getConnectedChord(
   const chordName = getChordNameFromKey(rightKey, preset)
   const base = CHORD_LIBRARY[chordName] ?? CHORD_LIBRARY.Bm
   const extensions = EXTENSION_BY_CHORD[chordName]?.[profile.color] ?? []
-  const notes = uniqueNotes([...base.notes, ...extensions])
+  const notes = applyInversion(uniqueNotes([...base.notes, ...extensions]), profile.inversion)
 
   return {
     altitudeName: profile.heightName,
@@ -88,11 +88,18 @@ function getChordNameFromKey(key: ControlKey, preset: MusicPreset) {
 
 function getExpressionProfile(hand?: DetectedHand) {
   const height = hand?.motion.height ?? 0.45
-  const openness = hand?.motion.openness ?? 0.35
+  const openness = Math.max(hand?.motion.openness ?? 0.35, hand?.motion.spread ?? 0.35)
   const roll = hand?.motion.roll ?? 0
+  const tilt = normalizeAngle(hand?.motion.tilt ?? 0)
   const heightBand: HeightBand = height > 0.68 ? 'high' : height > 0.38 ? 'mid' : 'low'
   const color: ChordColor =
-    openness > 0.72 ? 'octave' : heightBand === 'high' ? 'seventh' : heightBand === 'mid' ? 'add9' : 'triad'
+    openness > 0.72
+      ? 'octave'
+      : heightBand === 'high' || tilt > 0.66
+        ? 'seventh'
+        : heightBand === 'mid' || tilt > 0.38
+          ? 'add9'
+          : 'triad'
   const colorName =
     color === 'octave'
       ? 'Open'
@@ -102,32 +109,17 @@ function getExpressionProfile(hand?: DetectedHand) {
           ? 'Add9'
           : 'Pad'
 
-  if (roll > 0.34) {
-    return {
-      color,
-      colorName,
-      heightBand,
-      heightName: getHeightName(heightBand),
-      inversionName: '1ra inversion',
-    }
-  }
-
-  if (roll < -0.34) {
-    return {
-      color,
-      colorName,
-      heightBand,
-      heightName: getHeightName(heightBand),
-      inversionName: '2da inversion',
-    }
-  }
+  const inversion = roll > 0.22 ? 1 : roll < -0.22 ? 2 : 0
+  const inversionName =
+    inversion === 1 ? '1ra inversion' : inversion === 2 ? '2da inversion' : 'Root'
 
   return {
     color,
     colorName,
     heightBand,
     heightName: getHeightName(heightBand),
-    inversionName: 'Root',
+    inversion,
+    inversionName,
   }
 }
 
@@ -141,4 +133,22 @@ function getHeightName(heightBand: HeightBand) {
 
 function uniqueNotes(notes: string[]) {
   return [...new Set(notes)]
+}
+
+function applyInversion(notes: string[], inversion: number) {
+  if (inversion === 0) {
+    return notes
+  }
+
+  return notes.map((note, index) =>
+    index < inversion ? transposeOctave(note, 1) : note,
+  )
+}
+
+function transposeOctave(note: string, octaveShift: number) {
+  return note.replace(/(-?\d+)$/, (octave) => `${Number(octave) + octaveShift}`)
+}
+
+function normalizeAngle(value: number) {
+  return Math.min(1, Math.abs(value) / Math.PI)
 }
