@@ -1,3 +1,27 @@
+```md
+## Introducción
+
+**Hand Music Controller** es una aplicación web experimental que transforma los movimientos de las manos en una experiencia musical interactiva. Utilizando la cámara del dispositivo, el sistema detecta gestos, posiciones de los dedos y movimientos en tiempo real para controlar sonidos electrónicos, ritmos y efectos visuales directamente desde el navegador.
+
+El objetivo principal del proyecto es explorar una nueva forma de interacción entre el cuerpo humano, la música y la tecnología web. En lugar de depender de instrumentos físicos o controladores MIDI tradicionales, esta aplicación convierte las manos en una interfaz musical intuitiva, visual y accesible.
+
+El proyecto combina conceptos de **computer vision**, **hand tracking**, **Web Audio**, **música generativa** y **animaciones visuales basadas en nodos**. Esto permite crear una experiencia creativa donde los gestos del usuario pueden modificar parámetros musicales como ritmo, tono, intensidad, efectos o secuencias de sonido.
+
+**Hand Music Controller** está pensado como un proyecto de código abierto para desarrolladores, músicos, diseñadores interactivos y personas interesadas en experimentar con nuevas formas de creación musical mediante tecnologías web modernas.
+
+---
+
+## Introduction
+
+**Hand Music Controller** is an experimental web application that turns hand movements into an interactive musical experience. Using the device camera, the system detects gestures, finger positions, and real-time movements to control electronic sounds, rhythms, and visual effects directly from the browser.
+
+The main goal of the project is to explore a new way of interaction between the human body, music, and web technology. Instead of relying on physical instruments or traditional MIDI controllers, this application turns the hands into an intuitive, visual, and accessible musical interface.
+
+The project combines concepts from **computer vision**, **hand tracking**, **Web Audio**, **generative music**, and **node-based visual animations**. This makes it possible to create a creative experience where the user's gestures can modify musical parameters such as rhythm, pitch, intensity, effects, or sound sequences.
+
+**Hand Music Controller** is designed as an open-source project for developers, musicians, interactive designers, and anyone interested in experimenting with new forms of musical creation using modern web technologies.
+```
+
 # Hand Music Controller
 
 React application for creating music with hand gestures using MediaPipe Tasks Vision, Tone.js, React Three Fiber, and Zustand.
