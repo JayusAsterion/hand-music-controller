@@ -4,6 +4,8 @@ React application for creating music with hand gestures using MediaPipe Tasks Vi
 
 Aplicacion React para crear musica con gestos de manos usando MediaPipe Tasks Vision, Tone.js, React Three Fiber y Zustand.
 
+Live demo / Demo en vivo: https://hand-music-controller.vercel.app/
+
 ## English
 
 ### Overview
@@ -11,6 +13,12 @@ Aplicacion React para crear musica con gestos de manos usando MediaPipe Tasks Vi
 Hand Music Controller turns webcam hand tracking into an expressive music instrument.
 
 The left hand controls beats and groove. The right hand controls chords, harmony, and expression. Hand height, openness, tilt, roll, and horizontal position change the music and visuals in real time.
+
+### Live Demo
+
+Try the deployed version here:
+
+https://hand-music-controller.vercel.app/
 
 ### Features
 
@@ -233,6 +241,12 @@ src/
 Hand Music Controller convierte la deteccion de manos por camara en un instrumento musical expresivo.
 
 La mano izquierda controla beats y groove. La mano derecha controla acordes, armonia y expresion. La altura, apertura, inclinacion, giro y posicion horizontal de las manos modifican la musica y las visuales en tiempo real.
+
+### Demo en vivo
+
+Prueba la version desplegada aqui:
+
+https://hand-music-controller.vercel.app/
 
 ### Funcionalidades
 
