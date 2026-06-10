@@ -16,12 +16,17 @@ type HandTrackerProps = {
   onStopAudio: () => void
 }
 
+const ACTIVE_DETECTION_INTERVAL_MS = 33
+const IDLE_DETECTION_INTERVAL_MS = 42
+
 export function HandTracker({ onStartAudio, onStopAudio }: HandTrackerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const handLandmarkerRef = useRef<HandLandmarker | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const animationRef = useRef<number | null>(null)
+  const lastDetectionRef = useRef(0)
+  const detectedHandCountRef = useRef(0)
 
   const audioReady = useRaveStore((state) => state.audioReady)
   const status = useRaveStore((state) => state.status)
@@ -40,6 +45,8 @@ export function HandTracker({ onStartAudio, onStopAudio }: HandTrackerProps) {
     streamRef.current = null
     handLandmarkerRef.current?.close()
     handLandmarkerRef.current = null
+    detectedHandCountRef.current = 0
+    lastDetectionRef.current = 0
     clearCanvas(canvasRef.current)
     onStopAudio()
     setSignal(emptySignal)
@@ -52,11 +59,24 @@ export function HandTracker({ onStartAudio, onStopAudio }: HandTrackerProps) {
       const video = videoRef.current
       const canvas = canvasRef.current
       const handLandmarker = handLandmarkerRef.current
+      const now = performance.now()
+      const detectionInterval =
+        detectedHandCountRef.current > 0
+          ? ACTIVE_DETECTION_INTERVAL_MS
+          : IDLE_DETECTION_INTERVAL_MS
 
-      if (video && canvas && handLandmarker && video.readyState >= 2) {
-        const result = handLandmarker.detectForVideo(video, performance.now())
+      if (
+        video &&
+        canvas &&
+        handLandmarker &&
+        video.readyState >= 2 &&
+        now - lastDetectionRef.current >= detectionInterval
+      ) {
+        lastDetectionRef.current = now
+        const result = handLandmarker.detectForVideo(video, now)
         const nextSignal = readHandSignal(result)
 
+        detectedHandCountRef.current = nextSignal.hands.length
         drawHandOverlay(canvas, video, result)
         commitSignal(nextSignal)
       }

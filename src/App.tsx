@@ -60,12 +60,7 @@ function App() {
       return { ...control, label }
     })
   }, [selectedPreset])
-  const { startAudio, stopAudio } = useRaveEngine(
-    activeControls,
-    signal.hands,
-    selectedPreset,
-    setAudioReady,
-  )
+  const { startAudio, stopAudio } = useRaveEngine(selectedPreset, setAudioReady)
   const detectedLabel =
     signal.hands.length > 0
       ? signal.hands.map((hand) => hand.label).join(' + ')

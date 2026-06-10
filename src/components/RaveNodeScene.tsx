@@ -1,6 +1,6 @@
 import { Line } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
-import { useMemo, useRef } from 'react'
+import { memo, useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import {
   FINGER_CONTROLS,
@@ -22,51 +22,61 @@ type RaveNodeSceneProps = {
   visualPreset: VisualPreset
 }
 
-export function RaveNodeScene({
+export const RaveNodeScene = memo(function RaveNodeScene({
   activeKeys,
   hands,
   preset,
   visualPreset,
 }: RaveNodeSceneProps) {
   const activeSet = useMemo(() => new Set(activeKeys), [activeKeys])
-  const leftActive = LEFT_CONTROLS.filter((control) => activeSet.has(control.key))
-  const rightActive = RIGHT_CONTROLS.filter((control) => activeSet.has(control.key))
-  const bridgeLines = leftActive.flatMap((left) =>
-    rightActive.map((right) => ({
-      color: right.color,
-      key: `${left.key}-${right.key}`,
-      left,
-      right,
-    })),
+  const leftActive = useMemo(
+    () => LEFT_CONTROLS.filter((control) => activeSet.has(control.key)),
+    [activeSet],
   )
-  const connectedChord = getConnectedChord(activeKeys, hands, preset)
+  const rightActive = useMemo(
+    () => RIGHT_CONTROLS.filter((control) => activeSet.has(control.key)),
+    [activeSet],
+  )
+  const bridgeLines = useMemo(
+    () =>
+      leftActive.flatMap((left) =>
+        rightActive.map((right) => ({
+          color: right.color,
+          key: `${left.key}-${right.key}`,
+          left,
+          right,
+        })),
+      ),
+    [leftActive, rightActive],
+  )
+  const connectedChord = useMemo(
+    () => getConnectedChord(activeKeys, hands, preset),
+    [activeKeys, hands, preset],
+  )
   const connectedLeft = connectedChord
     ? CONTROL_BY_KEY.get(connectedChord.leftKey)
     : undefined
   const connectedRight = connectedChord
     ? CONTROL_BY_KEY.get(connectedChord.rightKey)
     : undefined
-  const energy = Math.min(
-    1,
-    activeKeys.length / 7 +
-      hands.length * 0.12 +
-      (connectedChord?.complexity ?? 0) * 0.035,
+  const energy = useMemo(
+    () =>
+      Math.min(
+        1,
+        activeKeys.length / 7 +
+          hands.length * 0.12 +
+          (connectedChord?.complexity ?? 0) * 0.035,
+      ),
+    [activeKeys.length, connectedChord, hands.length],
   )
-  const influence = getHandInfluence(hands)
+  const influence = useMemo(() => getHandInfluence(hands), [hands])
 
   return (
     <group>
       <RaveBackdrop energy={energy} visualPreset={visualPreset} />
       <EnergyCore energy={energy} visualPreset={visualPreset} />
 
-      {FINGER_CONTROLS.map((item, index) => (
-        <ReactiveNode
-          index={index}
-          isActive={activeSet.has(item.key)}
-          item={item}
-          key={item.key}
-        />
-      ))}
+      <ReactiveNodes activeSet={activeSet} />
 
       {FINGER_CONTROLS.map((item) => (
         <Line
@@ -120,7 +130,7 @@ export function RaveNodeScene({
       />
     </group>
   )
-}
+})
 
 function EnergyCore({
   energy,
@@ -441,17 +451,27 @@ function InfluenceBead({
   )
 }
 
-function ReactiveNode({
-  item,
-  isActive,
-  index,
-}: {
-  item: FingerControl
-  isActive: boolean
-  index: number
-}) {
-  const meshRef = useRef<THREE.Mesh>(null)
-  const base = item.position
+function ReactiveNodes({ activeSet }: { activeSet: Set<ControlKey> }) {
+  const meshRef = useRef<THREE.InstancedMesh>(null)
+  const dummy = useMemo(() => new THREE.Object3D(), [])
+  const color = useMemo(() => new THREE.Color(), [])
+
+  useEffect(() => {
+    const mesh = meshRef.current
+
+    if (!mesh) {
+      return
+    }
+
+    FINGER_CONTROLS.forEach((item, index) => {
+      color.set(activeSet.has(item.key) ? item.color : '#263244')
+      mesh.setColorAt(index, color)
+    })
+
+    if (mesh.instanceColor) {
+      mesh.instanceColor.needsUpdate = true
+    }
+  }, [activeSet, color])
 
   useFrame(({ clock }) => {
     const mesh = meshRef.current
@@ -461,24 +481,44 @@ function ReactiveNode({
     }
 
     const time = clock.elapsedTime
-    const pulse = isActive ? 1.42 + Math.sin(time * 8 + index) * 0.1 : 1
-    mesh.scale.setScalar(pulse)
-    mesh.position.y = base[1] + Math.sin(time * 2.1 + index * 0.6) * 0.08
-    mesh.rotation.x += 0.012 + index * 0.0008
-    mesh.rotation.y += isActive ? 0.03 : 0.012
+
+    FINGER_CONTROLS.forEach((item, index) => {
+      const isActive = activeSet.has(item.key)
+      const base = item.position
+      const pulse = isActive ? 1.42 + Math.sin(time * 8 + index) * 0.1 : 1
+
+      dummy.position.set(
+        base[0],
+        base[1] + Math.sin(time * 2.1 + index * 0.6) * 0.08,
+        base[2],
+      )
+      dummy.rotation.set(
+        time * (0.22 + index * 0.01),
+        time * (isActive ? 0.62 : 0.28),
+        0,
+      )
+      dummy.scale.setScalar(pulse)
+      dummy.updateMatrix()
+      mesh.setMatrixAt(index, dummy.matrix)
+    })
+
+    mesh.instanceMatrix.needsUpdate = true
   })
 
   return (
-    <mesh position={base} ref={meshRef}>
+    <instancedMesh
+      args={[undefined, undefined, FINGER_CONTROLS.length]}
+      ref={meshRef}
+    >
       <icosahedronGeometry args={[0.22, 2]} />
       <meshStandardMaterial
-        color={item.color}
-        emissive={item.color}
-        emissiveIntensity={isActive ? 2.1 : 0.24}
+        emissive="#182236"
+        emissiveIntensity={0.85}
         metalness={0.28}
         roughness={0.24}
+        vertexColors
       />
-    </mesh>
+    </instancedMesh>
   )
 }
 

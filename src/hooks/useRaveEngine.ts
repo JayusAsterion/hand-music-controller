@@ -3,15 +3,14 @@ import * as Tone from 'tone'
 import type {
   ControlKey,
   DetectedHand,
-  FingerControl,
+  HandSignal,
 } from '../domain/raveControls'
 import type { MusicPreset, SampleSlot } from '../domain/musicPresets'
+import { useRaveStore } from '../store/useRaveStore'
 import { resolvePresetSamples } from '../utils/audioSamples'
 import { getConnectedChord } from '../utils/harmony'
 
 export function useRaveEngine(
-  activeControls: FingerControl[],
-  hands: DetectedHand[],
   preset: MusicPreset,
   setAudioReady: (ready: boolean) => void,
 ) {
@@ -38,10 +37,95 @@ export function useRaveEngine(
   const activeBassNoteRef = useRef<string | null>(null)
   const arpStepRef = useRef(0)
   const beatStepRef = useRef(0)
+  const presetRef = useRef(preset)
+
+  const applyGestureModulation = useCallback((nextPreset: MusicPreset) => {
+    const leftMotion = getHandMotion(handsRef.current, 'Left')
+    const rightMotion = getHandMotion(handsRef.current, 'Right')
+    const leftRoll = normalizeAngle(leftMotion.roll)
+    const rightRoll = normalizeAngle(rightMotion.roll)
+    const rightTilt = normalizeAngle(rightMotion.tilt)
+    const rightExpression = Math.max(rightMotion.openness, rightMotion.spread)
+
+    Tone.Transport.bpm.rampTo(nextPreset.bpm, 0.12)
+    kickRef.current?.volume.rampTo(-8 + leftMotion.height * 2, 0.08)
+    hatRef.current?.volume.rampTo(-25 + leftMotion.openness * 5, 0.08)
+    clapRef.current?.volume.rampTo(-14 + Math.max(leftRoll, leftMotion.x) * 3, 0.08)
+    acidRef.current?.volume.rampTo(-17 + leftMotion.x * 4, 0.08)
+
+    filterRef.current?.frequency.rampTo(650 + rightMotion.height * 4300, 0.12)
+    padRef.current?.volume.rampTo(-25 + rightExpression * 12, 0.12)
+    arpRef.current?.volume.rampTo(-25 + rightTilt * 13, 0.12)
+    leadRef.current?.volume.rampTo(-18 + rightRoll * 8, 0.12)
+    delayRef.current?.wet.rampTo(0.06 + rightTilt * 0.32, 0.12)
+    reverbRef.current?.wet.rampTo(0.14 + rightMotion.height * 0.24, 0.12)
+
+    if (driveRef.current) {
+      driveRef.current.distortion = 0.12 + leftMotion.openness * 0.2
+    }
+  }, [])
+
+  const updateFromSignal = useCallback((signal: HandSignal, nextPreset: MusicPreset) => {
+    activeKeysRef.current = new Set(signal.activeKeys)
+    handsRef.current = signal.hands
+    const connectedChord = getConnectedChord(
+      signal.activeKeys,
+      signal.hands,
+      nextPreset,
+    )
+
+    applyGestureModulation(nextPreset)
+
+    const leadNotes = new Set<string>()
+
+    leadNotes.forEach((note) => {
+      if (!activeLeadNotesRef.current.has(note)) {
+        leadRef.current?.triggerAttack(note)
+      }
+    })
+
+    activeLeadNotesRef.current.forEach((note) => {
+      if (!leadNotes.has(note)) {
+        leadRef.current?.triggerRelease(note)
+      }
+    })
+
+    activeLeadNotesRef.current = leadNotes
+
+    const padNotes = new Set(connectedChord?.notes ?? [])
+
+    padNotes.forEach((note) => {
+      if (!activePadNotesRef.current.has(note)) {
+        padRef.current?.triggerAttack(note)
+      }
+    })
+
+    activePadNotesRef.current.forEach((note) => {
+      if (!padNotes.has(note)) {
+        padRef.current?.triggerRelease(note)
+      }
+    })
+
+    activePadNotesRef.current = padNotes
+
+    const bassNote = connectedChord?.bassNote ?? null
+
+    if (bassNote !== activeBassNoteRef.current) {
+      if (bassNote) {
+        bassRef.current?.triggerAttack(bassNote)
+      } else {
+        bassRef.current?.triggerRelease()
+      }
+
+      activeBassNoteRef.current = bassNote
+    }
+  }, [applyGestureModulation])
 
   const startAudio = useCallback(async () => {
+    const currentPreset = presetRef.current
+
     await Tone.start()
-    Tone.Transport.bpm.value = preset.bpm
+    Tone.Transport.bpm.value = currentPreset.bpm
 
     if (!bassRef.current) {
       const limiter = new Tone.Limiter(-1).toDestination()
@@ -178,7 +262,7 @@ export function useRaveEngine(
           const chord = getConnectedChord(
             [...activeKeysRef.current],
             handsRef.current,
-            preset,
+            presetRef.current,
           )
 
           if (chord) {
@@ -193,14 +277,15 @@ export function useRaveEngine(
       ]
     }
 
-    syncSamples(preset, masterRef.current)
+    syncSamples(currentPreset, masterRef.current)
+    updateFromSignal(useRaveStore.getState().signal, currentPreset)
 
     if (Tone.Transport.state !== 'started') {
       Tone.Transport.start()
     }
 
     setAudioReady(true)
-  }, [preset, setAudioReady])
+  }, [setAudioReady, updateFromSignal])
 
   const stopAudio = useCallback(() => {
     bassRef.current?.triggerRelease()
@@ -215,57 +300,24 @@ export function useRaveEngine(
   }, [setAudioReady])
 
   useEffect(() => {
+    presetRef.current = preset
     syncSamples(preset, masterRef.current)
-    const activeKeys = new Set(activeControls.map((control) => control.key))
-    activeKeysRef.current = activeKeys
-    handsRef.current = hands
-    const connectedChord = getConnectedChord([...activeKeys], hands, preset)
-    applyGestureModulation(preset)
+    updateFromSignal(useRaveStore.getState().signal, preset)
+  }, [preset, updateFromSignal])
 
-    const leadNotes = new Set<string>()
-
-    leadNotes.forEach((note) => {
-      if (!activeLeadNotesRef.current.has(note)) {
-        leadRef.current?.triggerAttack(note)
+  useEffect(() => {
+    const unsubscribe = useRaveStore.subscribe((state, previousState) => {
+      if (state.signal === previousState.signal) {
+        return
       }
+
+      updateFromSignal(state.signal, presetRef.current)
     })
 
-    activeLeadNotesRef.current.forEach((note) => {
-      if (!leadNotes.has(note)) {
-        leadRef.current?.triggerRelease(note)
-      }
-    })
+    updateFromSignal(useRaveStore.getState().signal, presetRef.current)
 
-    activeLeadNotesRef.current = leadNotes
-
-    const padNotes = new Set(connectedChord?.notes ?? [])
-
-    padNotes.forEach((note) => {
-      if (!activePadNotesRef.current.has(note)) {
-        padRef.current?.triggerAttack(note)
-      }
-    })
-
-    activePadNotesRef.current.forEach((note) => {
-      if (!padNotes.has(note)) {
-        padRef.current?.triggerRelease(note)
-      }
-    })
-
-    activePadNotesRef.current = padNotes
-
-    const bassNote = connectedChord?.bassNote ?? null
-
-    if (bassNote !== activeBassNoteRef.current) {
-      if (bassNote) {
-        bassRef.current?.triggerAttack(bassNote)
-      } else {
-        bassRef.current?.triggerRelease()
-      }
-
-      activeBassNoteRef.current = bassNote
-    }
-  }, [activeControls, hands, preset])
+    return unsubscribe
+  }, [updateFromSignal])
 
   useEffect(
     () => () => {
@@ -289,32 +341,6 @@ export function useRaveEngine(
   )
 
   return { startAudio, stopAudio }
-
-  function applyGestureModulation(nextPreset: MusicPreset) {
-    const leftMotion = getHandMotion(handsRef.current, 'Left')
-    const rightMotion = getHandMotion(handsRef.current, 'Right')
-    const leftRoll = normalizeAngle(leftMotion.roll)
-    const rightRoll = normalizeAngle(rightMotion.roll)
-    const rightTilt = normalizeAngle(rightMotion.tilt)
-    const rightExpression = Math.max(rightMotion.openness, rightMotion.spread)
-
-    Tone.Transport.bpm.rampTo(nextPreset.bpm, 0.12)
-    kickRef.current?.volume.rampTo(-8 + leftMotion.height * 2, 0.08)
-    hatRef.current?.volume.rampTo(-25 + leftMotion.openness * 5, 0.08)
-    clapRef.current?.volume.rampTo(-14 + Math.max(leftRoll, leftMotion.x) * 3, 0.08)
-    acidRef.current?.volume.rampTo(-17 + leftMotion.x * 4, 0.08)
-
-    filterRef.current?.frequency.rampTo(650 + rightMotion.height * 4300, 0.12)
-    padRef.current?.volume.rampTo(-25 + rightExpression * 12, 0.12)
-    arpRef.current?.volume.rampTo(-25 + rightTilt * 13, 0.12)
-    leadRef.current?.volume.rampTo(-18 + rightRoll * 8, 0.12)
-    delayRef.current?.wet.rampTo(0.06 + rightTilt * 0.32, 0.12)
-    reverbRef.current?.wet.rampTo(0.14 + rightMotion.height * 0.24, 0.12)
-
-    if (driveRef.current) {
-      driveRef.current.distortion = 0.12 + leftMotion.openness * 0.2
-    }
-  }
 
   function syncSamples(nextPreset: MusicPreset, output: Tone.ToneAudioNode | null) {
     if (!output || samplePresetRef.current === nextPreset.id) {
