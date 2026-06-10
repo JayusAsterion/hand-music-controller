@@ -1,4 +1,4 @@
-```md
+
 ## Introducción
 
 **Hand Music Controller** es una aplicación web experimental que transforma los movimientos de las manos en una experiencia musical interactiva. Utilizando la cámara del dispositivo, el sistema detecta gestos, posiciones de los dedos y movimientos en tiempo real para controlar sonidos electrónicos, ritmos y efectos visuales directamente desde el navegador.
